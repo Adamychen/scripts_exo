@@ -25,7 +25,7 @@ usage() {
 while [ $# -gt 0 ]; do
     case "$1" in
         --daemon) DAEMON=true; shift ;;
-        install|remove|status) break ;;
+        install|remove|status) ACTION="$1"; shift; break ;;
         *) usage ;;
     esac
 done
@@ -238,7 +238,7 @@ unload_service() {
     fi
 }
 
-case "${1:-help}" in
+case "${ACTION:-help}" in
     install)
         if [ "$DAEMON" = true ]; then
             echo "Modo daemon (requiere sudo). Plists en $PLIST_DIR"
