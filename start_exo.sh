@@ -11,6 +11,23 @@ for arg in "$@"; do
     esac
 done
 
+# Nix en macOS puede no estar en PATH cuando launchd ejecuta el script
+# (PATH de launchd es limitado: /usr/bin:/bin/usr/sbin:/sbin)
+if [ -z "$(command -v nix 2>/dev/null)" ]; then
+    for profile in \
+        "$HOME/.nix-profile/etc/profile.d/nix-daemon.sh" \
+        "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh" \
+        "/etc/profile.d/nix.sh" \
+        "/etc/profile.d/nix-daemon.sh"
+    do
+        if [ -f "$profile" ]; then
+            # shellcheck disable=SC1090
+            source "$profile"
+            break
+        fi
+    done
+fi
+
 check_deps nix pgrep
 
 # Verificar directorio

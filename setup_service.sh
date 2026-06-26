@@ -34,7 +34,8 @@ done
 
 if [ "$DAEMON" = true ]; then
     PLIST_DIR="$DAEMON_DIR"
-    PLIST_USER="$USER"
+    # Si se ejecuta con sudo, usar el usuario original
+    PLIST_USER="${SUDO_USER:-$USER}"
     SUDO="sudo"
     DOMAIN="system"
 else
