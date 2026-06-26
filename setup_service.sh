@@ -82,38 +82,55 @@ PLIST
 
 UID_USER=$(id -u)
 
+# Garantizar que los directorios necesarios existen
+ensure_dirs() {
+    local log_dir
+    log_dir=$(dirname "$LOG_FILE")
+    mkdir -p "$log_dir" "$EXO_DIR" "$LAUNCH_AGENTS_DIR"
+}
+
 load_service() {
     local label="$1"
     local plist="$LAUNCH_AGENTS_DIR/$label.plist"
 
+    # Si ya está cargado, lo reiniciamos
     if launchctl list "$label" 2>/dev/null | grep -q "$label"; then
         echo "  $label ya cargado. Reiniciando..."
-        launchctl kickstart -kp "gui/$UID_USER/$label" 2>/dev/null || true
+        launchctl kickstart -kp "gui/$UID_USER/$label" 2>/dev/null || \
+            launchctl kickstart -kp "$label" 2>/dev/null || true
         return 0
     fi
 
     echo "  Cargando $label..."
-    launchctl bootstrap "gui/$UID_USER" "$plist" 2>/dev/null || {
-        warn "No se pudo cargar $label (intenta: launchctl bootstrap gui/$UID_USER $plist)"
-        return 1
-    }
-    launchctl enable "gui/$UID_USER/$label" 2>/dev/null || true
-    launchctl kickstart -kp "gui/$UID_USER/$label" 2>/dev/null || true
+    # Intentar API moderna (bootstrap) primero, fallback a launchctl load
+    if launchctl bootstrap "gui/$UID_USER" "$plist" 2>/dev/null; then
+        launchctl enable "gui/$UID_USER/$label" 2>/dev/null || true
+        launchctl kickstart -kp "gui/$UID_USER/$label" 2>/dev/null || true
+    else
+        echo "  (usando launchctl load como fallback)"
+        launchctl load "$plist" 2>&1 || {
+            error "No se pudo cargar $label. Revisa: plutil -lint $plist"
+        }
+    fi
 }
 
 unload_service() {
     local label="$1"
     if launchctl list "$label" 2>/dev/null | grep -q "$label"; then
         echo "  Descargando $label..."
+        # Intentar API moderna (bootout) primero, fallback a launchctl unload
         launchctl bootout "gui/$UID_USER/$label" 2>/dev/null || \
-            launchctl bootout "gui/$UID_USER" "$LAUNCH_AGENTS_DIR/$label.plist" 2>/dev/null || true
+            launchctl bootout "gui/$UID_USER" "$LAUNCH_AGENTS_DIR/$label.plist" 2>/dev/null || \
+            launchctl unload "$LAUNCH_AGENTS_DIR/$label.plist" 2>/dev/null || true
     fi
 }
 
 case "${1:-help}" in
     install)
+        echo "Asegurando directorios..."
+        ensure_dirs
+
         echo "Generando plists..."
-        mkdir -p "$LAUNCH_AGENTS_DIR"
         generate_exo_plist
         generate_update_plist
 
