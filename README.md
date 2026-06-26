@@ -29,19 +29,21 @@ cp exo.conf.sample ~/.exo.conf
 Variables disponibles:
 
 | Variable | Default | Descripción |
-|---|---|---|
+|---|---|---|---|
+| `EXO_CONF` | `$HOME/.exo.conf` | Ruta al archivo de configuración |
 | `EXO_DIR` | `$HOME/exo` | Directorio del proyecto exo |
 | `LOG_FILE` | `$HOME/exo.log` | Archivo de log |
 | `PID_FILE` | `/tmp/exo.pid` | PID del proceso exo |
 | `LOCK_FILE` | `/tmp/exo_check.lock` | Lock para check_exo |
 | `EXO_PATTERN` | `nix.*run.*exo` | Patrón pgrep para detectar exo |
 | `BACKUP_DIR` | `$HOME/exo_backup` | Backups pre-update |
-| `MIN_DISK_MB` | `1024` | Espacio mínimo para update |
+| `MIN_DISK_MB` | `1024` | Espacio mínimo requerido en disco para update |
 | `LAST_UPDATE_FILE` | `$HOME/.exo_last_update` | Timestamp del último update |
-| `API_BASE_URL` | `http://localhost:52415` | API de exo |
-| `GITHUB_REPO` | `exo-explore/exo` | Repo de GitHub |
+| `MODELS_STATE_FILE` | `/tmp/exo_models.json` | Estado de modelos activos para backup/restore |
+| `API_BASE_URL` | `http://localhost:52415` | URL base de la API REST de exo |
+| `GITHUB_REPO` | `exo-explore/exo` | Repositorio de GitHub |
 
-También se pueden exportar como variables de entorno.
+El archivo `~/.exo.conf` se **auto-carga** al ejecutar cualquier script (vía `exo_lib.sh`). También se pueden exportar las variables directamente en el entorno.
 
 ## Scripts
 
@@ -84,10 +86,17 @@ Actualiza exo a la última versión de GitHub. Guarda modelos activos, detiene e
 Flags:
 
 | Flag | Descripción |
-|---|---|
+|---|---|---|
 | `--yes` | Salta la confirmación interactiva |
 | `--force` | Ignora el throttle de 24h entre updates |
 | `--dry-run` | Modo simulación, no modifica nada |
+
+**Protecciones:**
+
+- **Rollback automático**: si el `git clone` falla o el repositorio clonado no contiene `flake.nix`, se restaura el backup automáticamente. El backup se crea justo antes de borrar `$EXO_DIR`.
+- **Validación de integridad**: después de clonar verifica que exista `$EXO_DIR/flake.nix`. Si falta, se considera clon corrupto y se dispara el rollback.
+- **Rotación de backups**: los backups antiguos se limpian automáticamente (se mantienen los últimos 5). Configurable en `rotate_backups()`.
+- **Throttle diario**: solo permite un update cada 24h. Salta con `--force`.
 
 ### `setup_cron.sh`
 
@@ -101,22 +110,35 @@ Gestiona un cron job que ejecuta `update_exo.sh` diariamente a las 00:00.
 
 ## Servicio launchd (macOS)
 
-Gestiona exo como un servicio del sistema que arranca al iniciar sesión y se reinicia automáticamente si falla.
+Gestiona exo como un servicio launchd que arranca al iniciar sesión, se reinicia automáticamente si falla y se actualiza cada medianoche.
 
 ```bash
-./setup_service.sh install     # instalar servicios
-./setup_service.sh remove      # eliminar servicios
-./setup_service.sh status      # ver estado
+./setup_service.sh install     # generar plists y cargar servicios
+./setup_service.sh remove      # descargar y eliminar plists
+./setup_service.sh status      # ver estado de los servicios
 ```
 
-Genera dos plists en `~/Library/LaunchAgents/`:
+Genera dos archivos en `~/Library/LaunchAgents/`:
 
-| Plist | Función |
-|---|---|
-| `com.exo.exo.plist` | Proceso principal con auto-reinicio (`KeepAlive`) |
-| `com.exo.update.plist` | Update diario a las 00:00 (`StartCalendarInterval`) |
+| Plist | Comportamiento | Descripción |
+|---|---|---|
+| `com.exo.exo.plist` | `RunAtLoad` + `KeepAlive` | Proceso principal: arranca al iniciar sesión y se reinicia automáticamente si falla. Usa `start_exo.sh --foreground` |
+| `com.exo.update.plist` | `StartCalendarInterval` (00:00) | Update diario: ejecuta `update_exo.sh --yes` cada medianoche |
 
-El servicio usa `start_exo.sh --foreground` para que launchd gestione el ciclo de vida.
+**Flujo launchd:**
+
+1. Al iniciar sesión, launchd arranca `start_exo.sh --foreground`
+2. `start_exo.sh` ejecuta `exec nix run .#exo` (foreground), launchd mantiene el PID
+3. Si el proceso se cae, launchd lo reinicia automáticamente (con throttle de 10s)
+4. A las 00:00, launchd ejecuta `update_exo.sh --yes` (oneshot)
+5. Los logs van a `$LOG_FILE` configurado en `~/.exo.conf`
+
+**Ventajas sobre cron + check_exo.sh:**
+- Arranque automático al boot/inicio de sesión
+- No necesita polling (launchd notifica cambios de estado)
+- Logging integrado (o via `$LOG_FILE`)
+
+> **Nota**: `setup_service.sh` reemplaza a `setup_cron.sh` y `check_exo.sh` cuando se usa launchd.
 
 ## Tests
 
@@ -137,8 +159,16 @@ npm install -g bats
 
 ## Notas
 
-- El rollback de `update_exo.sh` restaura el backup automáticamente si falla el clone o la validación
-- Los backups se rotan automáticamente (se mantienen los últimos 5)
 - El check diario evita actualizar más de una vez cada 24h (salta con `--force`)
 - El lock de `check_exo.sh` evita múltiples reinicios concurrentes (seguro para cron)
-- `setup_service.sh` reemplaza a `setup_cron.sh` y `check_exo.sh` si usas launchd
+- `setup_service.sh` reemplaza a `setup_cron.sh` + `check_exo.sh` cuando usas launchd
+
+### Comparativa de modos de operación
+
+| Modo | Arranque automático | Auto-reinicio | Update automático | Dependencias |
+|---|---|---|---|---|
+| **cron + check** | ❌ (manual) | ✅ (cada minuto) | ✅ (00:00) | `crontab`, `check_exo.sh` |
+| **launchd** | ✅ (RunAtLoad) | ✅ (KeepAlive) | ✅ (timer diario) | `setup_service.sh` |
+| **manual** | ❌ | ❌ | ❌ | `start_exo.sh` / `stop_exo.sh` |
+
+launchd es el modo recomendado en macOS: arranque limpio, sin polling, tolerante a fallos.
