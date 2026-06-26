@@ -50,7 +50,8 @@ También se pueden exportar como variables de entorno.
 Inicia el proceso exo con `nix run .#exo`. Verifica que no haya otra instancia corriendo y escribe el PID en `$PID_FILE`.
 
 ```bash
-./start_exo.sh
+./start_exo.sh                     # modo background (por defecto)
+./start_exo.sh --foreground        # modo foreground (para launchd/systemd)
 ```
 
 ### `stop_exo.sh`
@@ -98,6 +99,25 @@ Gestiona un cron job que ejecuta `update_exo.sh` diariamente a las 00:00.
 ./setup_cron.sh status     # ver estado
 ```
 
+## Servicio launchd (macOS)
+
+Gestiona exo como un servicio del sistema que arranca al iniciar sesión y se reinicia automáticamente si falla.
+
+```bash
+./setup_service.sh install     # instalar servicios
+./setup_service.sh remove      # eliminar servicios
+./setup_service.sh status      # ver estado
+```
+
+Genera dos plists en `~/Library/LaunchAgents/`:
+
+| Plist | Función |
+|---|---|
+| `com.exo.exo.plist` | Proceso principal con auto-reinicio (`KeepAlive`) |
+| `com.exo.update.plist` | Update diario a las 00:00 (`StartCalendarInterval`) |
+
+El servicio usa `start_exo.sh --foreground` para que launchd gestione el ciclo de vida.
+
 ## Tests
 
 Requiere [bats](https://github.com/bats-core/bats-core):
@@ -113,7 +133,7 @@ npm install -g bats
 - Ciclo de vida start/stop
 - Monitor check_exo
 - Update con rollback y validación
-- Gestión de cron jobs
+- Gestión de cron y servicios
 
 ## Notas
 
@@ -121,3 +141,4 @@ npm install -g bats
 - Los backups se rotan automáticamente (se mantienen los últimos 5)
 - El check diario evita actualizar más de una vez cada 24h (salta con `--force`)
 - El lock de `check_exo.sh` evita múltiples reinicios concurrentes (seguro para cron)
+- `setup_service.sh` reemplaza a `setup_cron.sh` y `check_exo.sh` si usas launchd
