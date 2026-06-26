@@ -80,19 +80,46 @@ generate_update_plist() {
 PLIST
 }
 
+UID_USER=$(id -u)
+
+load_service() {
+    local label="$1"
+    local plist="$LAUNCH_AGENTS_DIR/$label.plist"
+
+    if launchctl list "$label" 2>/dev/null | grep -q "$label"; then
+        echo "  $label ya cargado. Reiniciando..."
+        launchctl kickstart -kp "gui/$UID_USER/$label" 2>/dev/null || true
+        return 0
+    fi
+
+    echo "  Cargando $label..."
+    launchctl bootstrap "gui/$UID_USER" "$plist" 2>/dev/null || {
+        warn "No se pudo cargar $label (intenta: launchctl bootstrap gui/$UID_USER $plist)"
+        return 1
+    }
+    launchctl enable "gui/$UID_USER/$label" 2>/dev/null || true
+    launchctl kickstart -kp "gui/$UID_USER/$label" 2>/dev/null || true
+}
+
+unload_service() {
+    local label="$1"
+    if launchctl list "$label" 2>/dev/null | grep -q "$label"; then
+        echo "  Descargando $label..."
+        launchctl bootout "gui/$UID_USER/$label" 2>/dev/null || \
+            launchctl bootout "gui/$UID_USER" "$LAUNCH_AGENTS_DIR/$label.plist" 2>/dev/null || true
+    fi
+}
+
 case "${1:-help}" in
     install)
         echo "Generando plists..."
+        mkdir -p "$LAUNCH_AGENTS_DIR"
         generate_exo_plist
         generate_update_plist
 
         echo "Cargando servicios launchd..."
-        launchctl load "$LAUNCH_AGENTS_DIR/$EXO_LABEL.plist" 2>/dev/null || \
-            launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENTS_DIR/$EXO_LABEL.plist" 2>/dev/null || \
-            warn "No se pudo cargar $EXO_LABEL (puede que ya esté cargado)"
-        launchctl load "$LAUNCH_AGENTS_DIR/$UPDATE_LABEL.plist" 2>/dev/null || \
-            launchctl bootstrap "gui/$(id -u)" "$LAUNCH_AGENTS_DIR/$UPDATE_LABEL.plist" 2>/dev/null || \
-            warn "No se pudo cargar $UPDATE_LABEL (puede que ya esté cargado)"
+        load_service "$EXO_LABEL"
+        load_service "$UPDATE_LABEL"
 
         log "Servicios launchd instalados"
         echo "Servicios instalados:"
@@ -101,10 +128,8 @@ case "${1:-help}" in
         ;;
     remove)
         echo "Descargando servicios launchd..."
-        launchctl bootout "gui/$(id -u)" "$LAUNCH_AGENTS_DIR/$EXO_LABEL.plist" 2>/dev/null || \
-            launchctl unload "$LAUNCH_AGENTS_DIR/$EXO_LABEL.plist" 2>/dev/null || true
-        launchctl bootout "gui/$(id -u)" "$LAUNCH_AGENTS_DIR/$UPDATE_LABEL.plist" 2>/dev/null || \
-            launchctl unload "$LAUNCH_AGENTS_DIR/$UPDATE_LABEL.plist" 2>/dev/null || true
+        unload_service "$EXO_LABEL"
+        unload_service "$UPDATE_LABEL"
 
         rm -f "$LAUNCH_AGENTS_DIR/$EXO_LABEL.plist" "$LAUNCH_AGENTS_DIR/$UPDATE_LABEL.plist"
         log "Servicios launchd eliminados"
@@ -116,7 +141,8 @@ case "${1:-help}" in
         for label in "$EXO_LABEL" "$UPDATE_LABEL"; do
             if [ -f "$LAUNCH_AGENTS_DIR/$label.plist" ]; then
                 echo "► $label (plist presente)"
-                launchctl list "$label" 2>/dev/null || echo "  Estado: no cargado"
+                launchctl print "gui/$UID_USER/$label" 2>/dev/null | head -5 || \
+                    echo "  Estado: no cargado"
             else
                 echo "► $label (no instalado)"
             fi
