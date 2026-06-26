@@ -113,30 +113,40 @@ Gestiona un cron job que ejecuta `update_exo.sh` diariamente a las 00:00.
 Gestiona exo como un servicio launchd que arranca al iniciar sesión, se reinicia automáticamente si falla y se actualiza cada medianoche.
 
 ```bash
-./setup_service.sh install     # generar plists y cargar servicios
-./setup_service.sh remove      # descargar y eliminar plists
-./setup_service.sh status      # ver estado de los servicios
+./setup_service.sh install     # instalar como LaunchAgent (sesión gráfica)
+./setup_service.sh install --daemon   # instalar como LaunchDaemon (requiere sudo, SSH OK)
+./setup_service.sh remove
+./setup_service.sh status
 ```
 
-Genera dos archivos en `~/Library/LaunchAgents/`:
+### Modos
+
+| Modo | Plist dir | sudo | Sesión | Uso |
+|---|---|---|---|---|
+| LaunchAgent (default) | `~/Library/LaunchAgents/` | No | GUI (login gráfico) | Mac con pantalla |
+| LaunchDaemon (`--daemon`) | `/Library/LaunchDaemons/` | Sí | Cualquiera (arranca al boot) | Mac mini, VPS, servidores SSH |
+
+**El modo `--daemon` es el que funciona en servidores SSH-only** (sin sesión gráfica Aqua). Requiere `sudo`. Los plists usan `UserName=jupyter` para que el proceso corra como el usuario y no como root.
+
+### Plists generados
 
 | Plist | Comportamiento | Descripción |
 |---|---|---|
-| `com.exo.exo.plist` | `RunAtLoad` + `KeepAlive` | Proceso principal: arranca al iniciar sesión y se reinicia automáticamente si falla. Usa `start_exo.sh --foreground` |
+| `com.exo.exo.plist` | `RunAtLoad` + `KeepAlive` | Proceso principal: arranca al iniciar y se reinicia automáticamente si falla. Usa `start_exo.sh --foreground` |
 | `com.exo.update.plist` | `StartCalendarInterval` (00:00) | Update diario: ejecuta `update_exo.sh --yes` cada medianoche |
 
 **Flujo launchd:**
 
-1. Al iniciar sesión, launchd arranca `start_exo.sh --foreground`
+1. Al iniciar, launchd arranca `start_exo.sh --foreground`
 2. `start_exo.sh` ejecuta `exec nix run .#exo` (foreground), launchd mantiene el PID
 3. Si el proceso se cae, launchd lo reinicia automáticamente (con throttle de 10s)
 4. A las 00:00, launchd ejecuta `update_exo.sh --yes` (oneshot)
 5. Los logs van a `$LOG_FILE` configurado en `~/.exo.conf`
 
 **Ventajas sobre cron + check_exo.sh:**
-- Arranque automático al boot/inicio de sesión
+- Arranque automático al boot
 - No necesita polling (launchd notifica cambios de estado)
-- Logging integrado (o via `$LOG_FILE`)
+- En LaunchDaemon, no depende de sesión gráfica
 
 > **Nota**: `setup_service.sh` reemplaza a `setup_cron.sh` y `check_exo.sh` cuando se usa launchd.
 
@@ -165,10 +175,11 @@ npm install -g bats
 
 ### Comparativa de modos de operación
 
-| Modo | Arranque automático | Auto-reinicio | Update automático | Dependencias |
+| Modo | Arranque automático | Auto-reinicio | Update automático | Requiere |
 |---|---|---|---|---|
-| **cron + check** | ❌ (manual) | ✅ (cada minuto) | ✅ (00:00) | `crontab`, `check_exo.sh` |
-| **launchd** | ✅ (RunAtLoad) | ✅ (KeepAlive) | ✅ (timer diario) | `setup_service.sh` |
-| **manual** | ❌ | ❌ | ❌ | `start_exo.sh` / `stop_exo.sh` |
+| **cron + check** | ❌ (manual) | ✅ (cada minuto) | ✅ (00:00) | `crontab` |
+| **launchd agent** | ✅ (RunAtLoad, login gráfico) | ✅ (KeepAlive) | ✅ (timer) | sesión GUI |
+| **launchd daemon** | ✅ (RunAtLoad, al boot) | ✅ (KeepAlive) | ✅ (timer) | `sudo` |
+| **manual** | ❌ | ❌ | ❌ | — |
 
-launchd es el modo recomendado en macOS: arranque limpio, sin polling, tolerante a fallos.
+Para servidores macOS sin sesión gráfica (SSH-only), usa `setup_service.sh install --daemon` (requiere sudo). Si sudo no es una opción, vuelve a `setup_cron.sh install` + `check_exo.sh` en cron.
