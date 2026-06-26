@@ -1,21 +1,30 @@
 #!/bin/bash
+set -euo pipefail
 
-echo "$(date): Deteniendo EXO..." >> /Users/jupyter/exo.log
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/exo_lib.sh"
 
-# 1. Intentar detenerlo de forma elegante por el nombre del ejecutable
-# Buscamos procesos que contengan 'exo' en su ruta
-PIDS=$(pgrep -f "exo")
+log "Deteniendo EXO..."
 
-if [ -z "$PIDS" ]; then
-    echo "$(date): No se encontró ningún proceso de EXO corriendo." >> /Users/jupyter/exo.log
+PID=$(find_exo_pid || true)
+
+if [ -z "$PID" ]; then
+    log "No se encontró ningún proceso de EXO corriendo."
+    echo "No hay proceso EXO activo."
     exit 0
 fi
 
-# 2. Enviar señal de terminación (SIGTERM)
-kill $PIDS
+log "Enviando SIGTERM a PID $PID..."
+kill "$PID" 2>/dev/null || true
 
-# Opcional: Esperar un momento y forzar si no cierra (SIGKILL)
-sleep 2
-kill -9 $PIDS 2>/dev/null
-
-echo "$(date): EXO detenido correctamente." >> /Users/jupyter/exo.log
+if wait_for_exit "$PID" 5; then
+    rm -f "$PID_FILE"
+    log "EXO detenido correctamente (PID $PID)"
+    echo "EXO detenido (PID $PID)"
+else
+    log "Forzando SIGKILL a PID $PID..."
+    kill -9 "$PID" 2>/dev/null || true
+    rm -f "$PID_FILE"
+    log "EXO forzado a detener (PID $PID)"
+    echo "EXO forzado a detener (PID $PID)"
+fi

@@ -1,0 +1,7 @@
+*.log
+*.tmp
+exo_backup/
+.exo_last_update
+.exo.conf
+.exo/
+.exo_events/

@@ -1,0 +1,39 @@
+# Configuración para scripts de exo
+# Copiar a ~/.exo.conf y ajustar según sea necesario
+# O exportar las variables directamente en el entorno
+
+# Ruta alternativa al archivo de configuración (default: ~/.exo.conf)
+# EXO_CONF="$HOME/.exo.conf"
+
+# Directorio del proyecto exo
+# EXO_DIR="$HOME/exo"
+
+# Archivo de log
+# LOG_FILE="$HOME/exo.log"
+
+# Archivo para guardar el PID del proceso exo
+# PID_FILE="/tmp/exo.pid"
+
+# Archivo de lock para check_exo
+# LOCK_FILE="/tmp/exo_check.lock"
+
+# Patrón para identificar el proceso exo en pgrep
+# EXO_PATTERN="nix.*run.*exo"
+
+# Directorio para backups antes de actualizar
+# BACKUP_DIR="$HOME/exo_backup"
+
+# Espacio mínimo requerido en MB para update
+# MIN_DISK_MB=1024
+
+# Archivo de timestamp del último update
+# LAST_UPDATE_FILE="$HOME/.exo_last_update"
+
+# Archivo temporal para estado de modelos
+# MODELS_STATE_FILE="/tmp/exo_models.json"
+
+# URL base de la API de exo
+# API_BASE_URL="http://localhost:52415"
+
+# Repositorio de GitHub de exo
+# GITHUB_REPO="exo-explore/exo"
