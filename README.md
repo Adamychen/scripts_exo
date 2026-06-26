@@ -119,6 +119,8 @@ Gestiona exo como un servicio launchd que arranca al iniciar sesión, se reinici
 ./setup_service.sh status
 ```
 
+**`install` es idempotente**: si ya hay una instalación previa, primero descarga los servicios (`bootout`) y luego regenera los plists. Así puedes re-ejecutarlo tras editar un plist o actualizar los scripts.
+
 ### Modos
 
 | Modo | Plist dir | sudo | Sesión | Uso |

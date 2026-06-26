@@ -248,6 +248,12 @@ case "${ACTION:-help}" in
         else
             echo "Modo agente. Plists en $PLIST_DIR"
         fi
+
+        # Limpiar instalación previa para garantizar idempotencia
+        echo "Limpiando instalación previa..."
+        unload_service "$EXO_LABEL" || true
+        unload_service "$UPDATE_LABEL" || true
+
         echo "Asegurando directorios..."
         ensure_dirs
 
