@@ -22,10 +22,12 @@ usage() {
     exit 1
 }
 
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --daemon) DAEMON=true; shift ;;
-        install|remove|status) ACTION="$1"; shift; break ;;
+ACTION=""
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --daemon) DAEMON=true ;;
+        install|remove|status) ACTION="$arg" ;;
         *) usage ;;
     esac
 done
